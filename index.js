@@ -2,10 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000; // Render uses PORT from the environment
 
-const slackToken = process.env.SLACK_TOKEN; // Replace with your actual Slack token
-const slackChannelId = '#api'; // Replace with your actual Slack channel ID
+const slackToken = process.env.SLACK_TOKEN;
+const slackChannelId = process.env.SLACK_CHANNEL_ID || '#api'; // Set in Render Dashboard
 
 // Middleware to parse JSON request bodies
 app.use(express.json());
@@ -13,7 +13,7 @@ app.use(express.json());
 // Function to send log to Slack
 const sendLogToSlack = async (message) => {
   try {
-    await axios.post(
+    const response = await axios.post(
       'https://slack.com/api/chat.postMessage',
       {
         channel: slackChannelId,
@@ -26,14 +26,18 @@ const sendLogToSlack = async (message) => {
         },
       }
     );
+    if (response.data.ok) {
+      console.log('Log sent to Slack successfully');
+    } else {
+      console.error('Error from Slack API:', response.data.error);
+    }
   } catch (error) {
-    console.error('Error sending log to Slack:', error);
+    console.error('Error sending log to Slack:', error.message);
   }
 };
 
 // Middleware to monitor API requests
 app.use((req, res, next) => {
-  // Log request method, URL, query parameters, and request body (for POST/PUT)
   const logMessage = `
     Method: ${req.method}
     URL: ${req.url}
@@ -44,9 +48,18 @@ app.use((req, res, next) => {
   console.log(logMessage);
 
   // Send the log to Slack
-  sendLogToSlack(logMessage.trim());
+  sendLogToSlack(logMessage.trim())
+    .then(() => {
+      res.send('Log sent to Slack successfully!');
+    })
+    .catch(() => {
+      res.status(500).send('Failed to send log to Slack');
+    });
+});
 
-  res.send('Success!');
+// Health Check route (optional for Render's health checks)
+app.get('/health', (req, res) => {
+  res.send('Server is healthy');
 });
 
 app.listen(port, () => {
